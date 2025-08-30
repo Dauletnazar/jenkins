@@ -1,5 +1,12 @@
 pipeline {
   agent any
+  options {
+    skipDefaultCheckout(true)
+    timestamps()
+  }
+  triggers {
+    pollSCM('H/2 * * * *')
+  }
   environment {
     DEBIAN_FRONTEND = 'noninteractive'
   }
@@ -10,13 +17,16 @@ pipeline {
 
     stage('Install Apache') {
       steps {
-        sh '''
-          set -eu
-          sudo apt-get update
-          sudo apt-get install -y apache2 curl
-          sudo systemctl enable --now apache2
-          sudo systemctl status apache2 --no-pager || true
-        '''
+        retry(3) {
+          sh '''
+            set -eu
+            sudo dpkg --configure -a || true
+            sudo apt-get -o DPkg::Lock::Timeout=600 update
+            sudo apt-get -o DPkg::Lock::Timeout=600 install -y apache2 curl
+            sudo systemctl enable --now apache2 || sudo service apache2 start
+            sudo systemctl status apache2 --no-pager || true
+          '''
+        }
       }
     }
 
@@ -37,7 +47,7 @@ pipeline {
           set -eu
           mkdir -p reports
           sudo tail -n 2000 /var/log/apache2/access.log > reports/access.log || true
-          awk '($9 ~ /^[45][0-9][0-9]$/){c[$9]++} END{for (k in c) printf "%s %d\\n", k, c[k]}' reports/access.log \
+          awk '($9 ~ /^[45][0-9][0-9]$/){c[$9]++} END{for (k in c) printf "%s %d\n", k, c[k]}' reports/access.log \
             | sort -nr > reports/http-codes.txt || true
           f5=$(awk '$1 ~ /^5/ {s+=$2} END{print s+0}' reports/http-codes.txt)
           f4=$(awk '$1 ~ /^4/ {s+=$2} END{print s+0}' reports/http-codes.txt)
