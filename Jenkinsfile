@@ -10,48 +10,40 @@ pipeline {
 
     stage('Install Apache') {
       steps {
-        sh '''
-          set -euxo pipefail
+        sh(script: '''
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y apache2
+          sudo apt-get install -y apache2 curl
           sudo systemctl enable --now apache2
           sudo systemctl status apache2 --no-pager || true
-        '''
+        ''', shell: '/bin/bash')
       }
     }
 
     stage('Smoke test') {
       steps {
-        sh '''
-          set -euxo pipefail
+        sh(script: '''
+          set -euo pipefail
           mkdir -p reports
-          # request local web server
-          curl -sSf -o /tmp/index.html http://localhost/ || exit 1
+          curl -sSf -o /tmp/index.html http://localhost/
           echo "Homepage bytes: $(wc -c < /tmp/index.html)" > reports/smoke.txt
-        '''
+        ''', shell: '/bin/bash')
       }
     }
 
     stage('Scan access log for 4xx/5xx') {
       steps {
-        sh '''
-          set -euxo pipefail
+        sh(script: '''
+          set -euo pipefail
           mkdir -p reports
-
-          # access.log
           sudo tail -n 2000 /var/log/apache2/access.log > reports/access.log || true
-
-          # count codes of errors
           awk '($9 ~ /^[45][0-9][0-9]$/){c[$9]++} END{for (k in c) printf "%s %d\\n", k, c[k]}' reports/access.log \
             | sort -nr > reports/http-codes.txt || true
-
           f5=$(awk '$1 ~ /^5/ {s+=$2} END{print s+0}' reports/http-codes.txt)
           f4=$(awk '$1 ~ /^4/ {s+=$2} END{print s+0}' reports/http-codes.txt)
           echo "4xx=$f4 5xx=$f5" | tee reports/summary.txt
-
-          # 5xx
           test "${f5:-0}" -eq 0
-        '''
+        ''', shell: '/bin/bash')
       }
     }
   }
