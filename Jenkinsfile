@@ -1,8 +1,16 @@
 pipeline {
   agent any
+  options {
+    skipDefaultCheckout(true)
+    timestamps()
+  }
+  triggers {
+    pollSCM('H/2 * * * *')
+  }
   environment {
     DEBIAN_FRONTEND = 'noninteractive'
   }
+
   stages {
     stage('Checkout') {
       steps { checkout scm }
@@ -37,7 +45,7 @@ pipeline {
           set -eu
           mkdir -p reports
           sudo tail -n 2000 /var/log/apache2/access.log > reports/access.log || true
-          awk '($9 ~ /^[45][0-9][0-9]$/){c[$9]++} END{for (k in c) printf "%s %d\\n", k, c[k]}' reports/access.log \
+          awk '($9 ~ /^[45][0-9][0-9]$/){c[$9]++} END{for (k in c) printf "%s %d\n", k, c[k]}' reports/access.log \
             | sort -nr > reports/http-codes.txt || true
           f5=$(awk '$1 ~ /^5/ {s+=$2} END{print s+0}' reports/http-codes.txt)
           f4=$(awk '$1 ~ /^4/ {s+=$2} END{print s+0}' reports/http-codes.txt)
@@ -47,6 +55,7 @@ pipeline {
       }
     }
   }
+
   post {
     always {
       archiveArtifacts artifacts: 'reports/**', fingerprint: true, onlyIfSuccessful: false
