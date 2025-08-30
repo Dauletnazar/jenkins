@@ -10,7 +10,6 @@ pipeline {
   environment {
     DEBIAN_FRONTEND = 'noninteractive'
   }
-
   stages {
     stage('Checkout') {
       steps { checkout scm }
@@ -18,13 +17,16 @@ pipeline {
 
     stage('Install Apache') {
       steps {
-        sh '''
-          set -eu
-          sudo apt-get update
-          sudo apt-get install -y apache2 curl
-          sudo systemctl enable --now apache2
-          sudo systemctl status apache2 --no-pager || true
-        '''
+        retry(3) {
+          sh '''
+            set -eu
+            sudo dpkg --configure -a || true
+            sudo apt-get -o DPkg::Lock::Timeout=600 update
+            sudo apt-get -o DPkg::Lock::Timeout=600 install -y apache2 curl
+            sudo systemctl enable --now apache2 || sudo service apache2 start
+            sudo systemctl status apache2 --no-pager || true
+          '''
+        }
       }
     }
 
@@ -55,7 +57,6 @@ pipeline {
       }
     }
   }
-
   post {
     always {
       archiveArtifacts artifacts: 'reports/**', fingerprint: true, onlyIfSuccessful: false
